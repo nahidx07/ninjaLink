@@ -3,17 +3,13 @@ const db = require('../lib/firebase');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// ১. অটো ভিডিও আপলোড হ্যান্ডলার (User video পাঠালে)
-bot.on(['video', 'document'], async (ctx) => {
-  // শুধুমাত্র এডমিন ভিডিও আপলোড করে লিঙ্ক তৈরি করতে পারবে (সিকিউরিটির জন্য)
-  if (ctx.from.id.toString() !== process.env.ADMIN_ID) {
-    return ctx.reply("দুঃখিত, শুধুমাত্র এডমিন ভিডিও আপলোড করতে পারবেন।");
-  }
-
-  const waitMsg = await ctx.reply("প্রসেসিং হচ্ছে, দয়া করে অপেক্ষা করুন...");
+// ১. যেকোনো সাইজের ভিডিও বা ফাইল হ্যান্ডলার
+bot.on(['video', 'document', 'audio', 'video_note', 'animation'], async (ctx) => {
+  const waitMsg = await ctx.reply("⚡ বড় ফাইল প্রসেসিং হচ্ছে... দয়া করে কয়েক সেকেন্ড অপেক্ষা করুন।");
 
   try {
-    // ক) ভিডিওটি আপনার স্টোরেজ চ্যানেলে ফরওয়ার্ড/কপি করা
+    // ক) সরাসরি copyMessage ব্যবহার করা (এটি ফাইলের সাইজ যাই হোক না কেন কাজ করবে)
+    // কারণ এটি ফাইল ডাউনলোড করে না, শুধু টেলিগ্রাম সার্ভার থেকে কপি করে।
     const sentMsg = await ctx.telegram.copyMessage(
       process.env.CHANNEL_ID,
       ctx.chat.id,
@@ -23,34 +19,40 @@ bot.on(['video', 'document'], async (ctx) => {
     const messageId = sentMsg.message_id;
     const slug = `Video${messageId}`;
 
-    // খ) Firebase ডাটাবেজে অটো সেভ করা
+    // খ) Firebase-এ তথ্য সেভ করা
     await db.collection('videos').doc(slug).set({
       slug: slug,
       message_id: messageId,
-      created_at: new Date().toISOString(),
-      uploader_id: ctx.from.id
+      file_name: ctx.message.document?.file_name || 'Video File',
+      uploader_id: ctx.from.id,
+      created_at: new Date().toISOString()
     });
 
-    // গ) ইউজারকে অটো জেনারেটেড লিঙ্ক দেওয়া
-    const botUser = await ctx.telegram.getMe();
-    const shareLink = `https://t.me/${botUser.username}?start=${slug}`;
+    // গ) শেয়ারিং লিঙ্ক তৈরি
+    const shareLink = `https://t.me/${ctx.botInfo.username}?start=${slug}`;
 
     await ctx.telegram.deleteMessage(ctx.chat.id, waitMsg.message_id);
-    await ctx.reply(`✅ অটোমেটিক সেভ হয়েছে!\n\n🔗 লিঙ্ক: ${shareLink}\n📂 চ্যানেল মেসেজ আইডি: ${messageId}`);
+    
+    await ctx.reply(
+      `✅ আপনার বড় ফাইলটি সফলভাবে সেভ হয়েছে!\n\n🔗 লিঙ্ক: ${shareLink}`,
+      Markup.inlineKeyboard([
+        [Markup.button.url("🚀 Share This File", `https://t.me/share/url?url=${shareLink}`)]
+      ])
+    );
 
   } catch (error) {
-    console.error(error);
-    ctx.reply("❌ আপলোড করতে সমস্যা হয়েছে। নিশ্চিত করুন বট চ্যানেলে এডমিন।");
+    console.error("Big File Error:", error);
+    ctx.reply("❌ ফাইলটি সেভ করা যায়নি। নিশ্চিত করুন বট চ্যানেলে অ্যাডমিন এবং ফাইলটি এখনো টেলিগ্রাম সার্ভারে আছে।");
   }
 });
 
-// ২. /start কমান্ড: Video+ID স্লাগ দিয়ে ভিডিও ডেলিভারি
+// ২. /start কমান্ড এবং অন্যান্য লজিক আগের মতোই থাকবে...
 bot.start(async (ctx) => {
   const userId = ctx.from.id.toString();
   const startParam = ctx.startPayload;
 
   try {
-    // ইউজার ডাটা সেভ
+    // ইউজার ট্র্যাকিং (Nahid এর ডাটাবেজে)
     const userRef = db.collection('users').doc(userId);
     const userDoc = await userRef.get();
     if (!userDoc.exists) {
@@ -68,32 +70,25 @@ bot.start(async (ctx) => {
         const { message_id } = videoDoc.data();
         await ctx.telegram.copyMessage(ctx.chat.id, process.env.CHANNEL_ID, message_id);
       } else {
-        ctx.reply("❌ এই লিংকে কোনো ভিডিও পাওয়া যায়নি।");
+        ctx.reply("❌ লিঙ্কটি সঠিক নয় বা ফাইলটি মুছে ফেলা হয়েছে।");
       }
     } else {
-      ctx.reply("স্বাগতম! ভিডিও বা ফাইল শেয়ার করতে এটি ব্যবহার করুন।");
+      ctx.reply("স্বাগতম! যেকোনো সাইজের ফাইল পাঠান, আমি লিঙ্ক তৈরি করে দিব।");
     }
   } catch (error) {
     ctx.reply("কিছু একটা সমস্যা হয়েছে।");
   }
 });
 
-// ৩. /broadcast কমান্ড (আগের মতোই)
+// ৩. অ্যাডমিন ব্রডকাস্ট সিস্টেম
 bot.command('broadcast', async (ctx) => {
   if (ctx.from.id.toString() !== process.env.ADMIN_ID) return;
   const msg = ctx.message.text.split(' ').slice(1).join(' ');
-  if (!msg) return ctx.reply("মেসেজ লিখুন।");
-
   const usersSnapshot = await db.collection('users').get();
-  ctx.reply("ব্রডকাস্ট শুরু হয়েছে...");
-  let count = 0;
   for (const doc of usersSnapshot.docs) {
-    try {
-      await ctx.telegram.sendMessage(doc.id, msg);
-      count++;
-    } catch (e) { continue; }
+    try { await ctx.telegram.sendMessage(doc.id, msg); } catch (e) {}
   }
-  ctx.reply(`✅ সফল! ${count} জনকে পাঠানো হয়েছে।`);
+  ctx.reply("ব্রডকাস্ট সম্পন্ন।");
 });
 
 module.exports = async (req, res) => {

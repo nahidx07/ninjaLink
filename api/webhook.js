@@ -6,10 +6,10 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 // ১. ইউজার রেজিস্ট্রেশন ও ভিডিও ডেলিভারি লজিক
 bot.start(async (ctx) => {
   const userId = ctx.from.id.toString();
-  const startParam = ctx.startPayload; // এখানে সরাসরি Message ID আসবে (যেমন: 101)
+  const startParam = ctx.startPayload; // সরাসরি Message ID (যেমন: 5)
 
   try {
-    // --- Firebase এ ইউজার ডাটা সেভ (Duplicate Check) ---
+    // --- Firebase এ ইউজার ডাটা সেভ ---
     const userRef = db.collection('users').doc(userId);
     const doc = await userRef.get();
     
@@ -22,34 +22,23 @@ bot.start(async (ctx) => {
       });
     }
 
-    // --- ২. Channel Join Check ---
-    const member = await ctx.telegram.getChatMember(process.env.CHANNEL_ID, userId);
-    const isJoined = ['creator', 'administrator', 'member'].includes(member.status);
-
-    if (!isJoined) {
-      return ctx.reply(
-        "❌ আপনি আমাদের চ্যানেলে জয়েন নেই!\n\nভিডিওটি পেতে নিচের বাটনে ক্লিক করে জয়েন করুন এবং আবার লিংকে ক্লিক করুন।",
-        Markup.inlineKeyboard([
-          [Markup.button.url("📢 Join Channel", `https://t.me/+lSOjcGdx1mUwOGE1`)] // আপনার চ্যানেলের লিংক দিন
-        ])
-      );
-    }
-
-    // --- ৩. সরাসরি Message ID দিয়ে ভিডিও পাঠানো ---
+    // --- সরাসরি ভিডিও পাঠানোর লজিক (No Join Required) ---
     if (startParam && !isNaN(startParam)) {
-      // startParam-এ থাকা সংখ্যাটিকে message_id হিসেবে ব্যবহার করে ভিডিও কপি করা
-      await ctx.telegram.copyMessage(ctx.chat.id, process.env.CHANNEL_ID, parseInt(startParam));
+      const messageId = parseInt(startParam);
+      
+      // চ্যানেলের ভিডিওটি ইউজারের কাছে কপি করা
+      await ctx.telegram.copyMessage(ctx.chat.id, process.env.CHANNEL_ID, messageId);
     } else {
-      ctx.reply("স্বাগতম! ভিডিও পেতে সঠিক লিংকে ক্লিক করুন।");
+      ctx.reply("স্বাগতম! ভিডিও পেতে সঠিক লিঙ্কে ক্লিক করুন।");
     }
 
   } catch (error) {
-    console.error("Error:", error);
-    ctx.reply("কিছু একটা সমস্যা হয়েছে। সম্ভবত ভিডিওটি খুঁজে পাওয়া যায়নি বা বটটি চ্যানেলে অ্যাডমিন নয়।");
+    console.error("Detailed Error:", error);
+    ctx.reply("দুঃখিত, ভিডিওটি পাঠানো সম্ভব হচ্ছে না। নিশ্চিত করুন বটটি চ্যানেলে অ্যাডমিন এবং ভিডিও আইডি সঠিক।");
   }
 });
 
-// ৪. Admin Broadcast System
+// ২. Admin Broadcast System
 bot.command('broadcast', async (ctx) => {
   if (ctx.from.id.toString() !== process.env.ADMIN_ID) return ctx.reply("Not Authorized!");
   
@@ -66,7 +55,7 @@ bot.command('broadcast', async (ctx) => {
       await ctx.telegram.sendMessage(doc.id, msg);
       count++;
     } catch (e) {
-      continue; // ইউজার বট ব্লক করলে স্কিপ করবে
+      continue; 
     }
   }
   ctx.reply(`✅ ব্রডকাস্ট সফল! মোট পাঠানো হয়েছে: ${count} জনকে।`);
@@ -80,7 +69,6 @@ module.exports = async (req, res) => {
     }
     res.status(200).send('OK');
   } catch (err) {
-    console.error(err);
     res.status(500).send('Error');
   }
 };

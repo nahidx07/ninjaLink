@@ -3,13 +3,54 @@ const db = require('../lib/firebase');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// ১. /start কমান্ড: 'Video' + ID ফরম্যাট চেক করবে
-bot.start(async (ctx) => {
-  const userId = ctx.from.id.toString();
-  const startParam = ctx.startPayload; // উদাহরণ: Video1971
+// ১. অটো ভিডিও আপলোড হ্যান্ডলার (User video পাঠালে)
+bot.on(['video', 'document'], async (ctx) => {
+  // শুধুমাত্র এডমিন ভিডিও আপলোড করে লিঙ্ক তৈরি করতে পারবে (সিকিউরিটির জন্য)
+  if (ctx.from.id.toString() !== process.env.ADMIN_ID) {
+    return ctx.reply("দুঃখিত, শুধুমাত্র এডমিন ভিডিও আপলোড করতে পারবেন।");
+  }
+
+  const waitMsg = await ctx.reply("প্রসেসিং হচ্ছে, দয়া করে অপেক্ষা করুন...");
 
   try {
-    // Firebase-এ ইউজার ডাটা সেভ (Nahid এর ডাটাবেজে ইউজার ট্র্যাকিং হবে)
+    // ক) ভিডিওটি আপনার স্টোরেজ চ্যানেলে ফরওয়ার্ড/কপি করা
+    const sentMsg = await ctx.telegram.copyMessage(
+      process.env.CHANNEL_ID,
+      ctx.chat.id,
+      ctx.message.message_id
+    );
+
+    const messageId = sentMsg.message_id;
+    const slug = `Video${messageId}`;
+
+    // খ) Firebase ডাটাবেজে অটো সেভ করা
+    await db.collection('videos').doc(slug).set({
+      slug: slug,
+      message_id: messageId,
+      created_at: new Date().toISOString(),
+      uploader_id: ctx.from.id
+    });
+
+    // গ) ইউজারকে অটো জেনারেটেড লিঙ্ক দেওয়া
+    const botUser = await ctx.telegram.getMe();
+    const shareLink = `https://t.me/${botUser.username}?start=${slug}`;
+
+    await ctx.telegram.deleteMessage(ctx.chat.id, waitMsg.message_id);
+    await ctx.reply(`✅ অটোমেটিক সেভ হয়েছে!\n\n🔗 লিঙ্ক: ${shareLink}\n📂 চ্যানেল মেসেজ আইডি: ${messageId}`);
+
+  } catch (error) {
+    console.error(error);
+    ctx.reply("❌ আপলোড করতে সমস্যা হয়েছে। নিশ্চিত করুন বট চ্যানেলে এডমিন।");
+  }
+});
+
+// ২. /start কমান্ড: Video+ID স্লাগ দিয়ে ভিডিও ডেলিভারি
+bot.start(async (ctx) => {
+  const userId = ctx.from.id.toString();
+  const startParam = ctx.startPayload;
+
+  try {
+    // ইউজার ডাটা সেভ
     const userRef = db.collection('users').doc(userId);
     const userDoc = await userRef.get();
     if (!userDoc.exists) {
@@ -22,70 +63,37 @@ bot.start(async (ctx) => {
     }
 
     if (startParam) {
-      // ডাটাবেজ থেকে এই স্লাগটি (যেমন: Video1971) খুঁজবে
-      const videoRef = db.collection('videos').doc(startParam);
-      const videoDoc = await videoRef.get();
-
+      const videoDoc = await db.collection('videos').doc(startParam).get();
       if (videoDoc.exists) {
         const { message_id } = videoDoc.data();
-        // স্টোরেজ চ্যানেল থেকে ভিডিওটি কপি করে পাঠানো হবে
         await ctx.telegram.copyMessage(ctx.chat.id, process.env.CHANNEL_ID, message_id);
       } else {
-        ctx.reply("❌ দুঃখিত, এই লিংকে কোনো ভিডিও পাওয়া যায়নি। সঠিক লিঙ্ক ব্যবহার করুন।");
+        ctx.reply("❌ এই লিংকে কোনো ভিডিও পাওয়া যায়নি।");
       }
     } else {
-      ctx.reply("স্বাগতম! ভিডিও পেতে আমাদের জেনারেট করা লিঙ্ক ব্যবহার করুন।");
+      ctx.reply("স্বাগতম! ভিডিও বা ফাইল শেয়ার করতে এটি ব্যবহার করুন।");
     }
   } catch (error) {
-    console.error(error);
-    ctx.reply("কিছু একটা সমস্যা হয়েছে। দয়া করে এডমিনের সাথে যোগাযোগ করুন।");
+    ctx.reply("কিছু একটা সমস্যা হয়েছে।");
   }
 });
 
-// ২. /add কমান্ড: Video + ID ফরম্যাটে লিঙ্ক তৈরি করা
-// ব্যবহার: /add Video1971 1971
-bot.command('add', async (ctx) => {
-  if (ctx.from.id.toString() !== process.env.ADMIN_ID) return ctx.reply("Not Authorized!");
-
-  const args = ctx.message.text.split(' ');
-  if (args.length < 3) return ctx.reply("❌ ফরম্যাট: /add [লিঙ্ক_নাম] [মেসেজ_আইডি]\nউদাহরণ: /add Video1971 1971");
-
-  const slug = args[1]; // Video1971
-  const messageId = parseInt(args[2]); // 1971
-
-  if (isNaN(messageId)) return ctx.reply("❌ মেসেজ আইডি অবশ্যই সংখ্যা হতে হবে।");
-
-  try {
-    await db.collection('videos').doc(slug).set({
-      slug: slug,
-      message_id: messageId,
-      created_at: new Date().toISOString()
-    });
-
-    ctx.reply(`✅ লিঙ্ক তৈরি হয়েছে!\n\n🔗 লিঙ্ক: https://t.me/${ctx.botInfo.username}?start=${slug}`);
-  } catch (error) {
-    ctx.reply("❌ ডাটাবেজে সেভ করতে সমস্যা হয়েছে।");
-  }
-});
-
-// ৩. /broadcast কমান্ড: সবাইকে মেসেজ পাঠানো
+// ৩. /broadcast কমান্ড (আগের মতোই)
 bot.command('broadcast', async (ctx) => {
-  if (ctx.from.id.toString() !== process.env.ADMIN_ID) return ctx.reply("Not Authorized!");
-  
+  if (ctx.from.id.toString() !== process.env.ADMIN_ID) return;
   const msg = ctx.message.text.split(' ').slice(1).join(' ');
   if (!msg) return ctx.reply("মেসেজ লিখুন।");
 
   const usersSnapshot = await db.collection('users').get();
-  let count = 0;
   ctx.reply("ব্রডকাস্ট শুরু হয়েছে...");
-
+  let count = 0;
   for (const doc of usersSnapshot.docs) {
     try {
       await ctx.telegram.sendMessage(doc.id, msg);
       count++;
     } catch (e) { continue; }
   }
-  ctx.reply(`✅ ব্রডকাস্ট সফল! ${count} জনকে পাঠানো হয়েছে।`);
+  ctx.reply(`✅ সফল! ${count} জনকে পাঠানো হয়েছে।`);
 });
 
 module.exports = async (req, res) => {

@@ -3,32 +3,25 @@ const db = require('../lib/firebase');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// ১. ফাইল, ফটো, ভিডিও, APK ও টেক্সট/লিংক হ্যান্ডলার
-bot.on(['video', 'document', 'photo', 'text', 'animation', 'audio'], async (ctx) => {
+// ১. শুধুমাত্র মিডিয়া (ফটো, ভিডিও, ফাইল, APK, অডিও) হ্যান্ডলার
+bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async (ctx) => {
   const waitMsg = await ctx.reply("⚡ প্রসেসিং হচ্ছে... দয়া করে অপেক্ষা করুন।");
 
   try {
-    let sentMsg;
     const user = ctx.from;
     const userMention = `[${user.first_name}](tg://user?id=${user.id})`;
     const username = user.username ? `@${user.username}` : "নেই";
 
-    // ক) আইটেমটি চ্যানেলে কপি বা সেন্ড করা
-    if (ctx.message.text) {
-      // যদি টেক্সট বা লিংক হয়
-      sentMsg = await ctx.telegram.sendMessage(process.env.CHANNEL_ID, ctx.message.text);
-    } else {
-      // যদি ভিডিও, ফটো, APK বা ফাইল হয়
-      sentMsg = await ctx.telegram.copyMessage(
-        process.env.CHANNEL_ID,
-        ctx.chat.id,
-        ctx.message.message_id
-      );
-    }
+    // ক) মিডিয়া ফাইলটি চ্যানেলে কপি করা
+    const sentMsg = await ctx.telegram.copyMessage(
+      process.env.CHANNEL_ID,
+      ctx.chat.id,
+      ctx.message.message_id
+    );
 
     const messageId = sentMsg.message_id;
 
-    // খ) চ্যানেলে দ্বিতীয় মেসেজ: আপলোডারের তথ্য পাঠানো
+    // খ) চ্যানেলে দ্বিতীয় মেসেজ: আপলোডারের বিস্তারিত তথ্য পাঠানো
     const infoText = `📥 **নতুন ফাইল আপলোড হয়েছে!**\n\n` +
                      `👤 নাম: ${user.first_name}\n` +
                      `🆔 ইউজারনেম: ${username}\n` +
@@ -44,7 +37,7 @@ bot.on(['video', 'document', 'photo', 'text', 'animation', 'audio'], async (ctx)
       message_id: messageId,
       uploader_id: user.id,
       uploader_name: user.first_name,
-      type: ctx.message.text ? 'text' : 'media',
+      type: 'media',
       created_at: new Date().toISOString()
     });
 
@@ -53,7 +46,7 @@ bot.on(['video', 'document', 'photo', 'text', 'animation', 'audio'], async (ctx)
     await ctx.telegram.deleteMessage(ctx.chat.id, waitMsg.message_id);
     
     await ctx.reply(
-      `✅ সফলভাবে সেভ হয়েছে!\n\n🔗 লিঙ্ক: ${shareLink}`,
+      `✅ আপনার ফাইলটি সফলভাবে সেভ হয়েছে!\n\n🔗 লিঙ্ক: ${shareLink}`,
       Markup.inlineKeyboard([
         [Markup.button.url("🚀 শেয়ার করুন", `https://t.me/share/url?url=${shareLink}`)]
       ])
@@ -65,7 +58,16 @@ bot.on(['video', 'document', 'photo', 'text', 'animation', 'audio'], async (ctx)
   }
 });
 
-// ২. /start কমান্ড (লিঙ্ক থেকে ভিডিও ডেলিভারি ও ইউজার ট্র্যাকিং)
+// ২. টেক্সট মেসেজ ব্লক করার হ্যান্ডলার (যদি কোনো কমান্ড না হয়)
+bot.on('text', async (ctx, next) => {
+  // যদি মেসেজটি /start বা অন্য কোনো কমান্ড না হয়
+  if (!ctx.message.text.startsWith('/')) {
+    return ctx.reply("❌ দুঃখিত! এই বটের মাধ্যমে শুধুমাত্র ফটো, ভিডিও, APK বা ফাইল শেয়ার করা যায়। টেক্সট মেসেজ বা লিংক সরাসরি পাঠানো যাবে না।");
+  }
+  return next();
+});
+
+// ৩. /start কমান্ড (লিঙ্ক থেকে ডেলিভারি)
 bot.start(async (ctx) => {
   const userId = ctx.from.id.toString();
   const startParam = ctx.startPayload;
@@ -91,14 +93,14 @@ bot.start(async (ctx) => {
         ctx.reply("❌ লিঙ্কটি সঠিক নয় বা ফাইলটি মুছে ফেলা হয়েছে।");
       }
     } else {
-      ctx.reply(`স্বাগতম ${ctx.from.first_name}!\n\nযেকোনো ফাইল বা লিঙ্ক এখানে পাঠান, আমি লিঙ্ক তৈরি করে দিব।`);
+      ctx.reply(`স্বাগতম ${ctx.from.first_name}!\n\nযেকোনো ভিডিও, ফটো বা ফাইল এখানে পাঠান, আমি লিঙ্ক তৈরি করে দিব।`);
     }
   } catch (error) {
     ctx.reply("কিছু একটা সমস্যা হয়েছে।");
   }
 });
 
-// ৩. এডমিন ব্রডকাস্ট সিস্টেম
+// ৪. এডমিন ব্রডকাস্ট সিস্টেম
 bot.command('broadcast', async (ctx) => {
   if (ctx.from.id.toString() !== process.env.ADMIN_ID) return;
   const msg = ctx.message.text.split(' ').slice(1).join(' ');

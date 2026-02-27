@@ -3,50 +3,53 @@ const db = require('../lib/firebase');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// ১. Video ID Mapping (উদাহরণ)
-const VIDEO_MAP = {
-  'movie101': 123, // এখানে 123 হলো আপনার চ্যানেলের message_id
-  'series01': 125,
-};
-
-// ২. User Registration & Deep Link Handler
+// ১. ইউজার রেজিস্ট্রেশন ও ভিডিও ডেলিভারি লজিক
 bot.start(async (ctx) => {
   const userId = ctx.from.id.toString();
-  const startParam = ctx.startPayload; // Deep link parameter (?start=...)
+  const startParam = ctx.startPayload; // এখানে সরাসরি Message ID আসবে (যেমন: 101)
 
-  // Firebase এ ইউজার ডাটা সেভ (Duplicate Check)
-  const userRef = db.collection('users').doc(userId);
-  const doc = await userRef.get();
-  
-  if (!doc.exists) {
-    await userRef.set({
-      user_id: userId,
-      username: ctx.from.username || 'N/A',
-      first_name: ctx.from.first_name,
-      start_date: new Date().toISOString()
-    });
-  }
-
-  // Channel Join Check
   try {
-    const member = await ctx.telegram.getChatMember(process.env.CHANNEL_ID, userId);
-    if (member.status === 'left' || member.status === 'kicked') {
-      return ctx.reply("ভিডিওটি পেতে আমাদের চ্যানেলে জয়েন করুন।", Markup.inlineKeyboard([
-        [Markup.button.url("Join Channel", `https://t.me/your_channel_username`)]
-      ]));
+    // --- Firebase এ ইউজার ডাটা সেভ (Duplicate Check) ---
+    const userRef = db.collection('users').doc(userId);
+    const doc = await userRef.get();
+    
+    if (!doc.exists) {
+      await userRef.set({
+        user_id: userId,
+        username: ctx.from.username || 'N/A',
+        first_name: ctx.from.first_name,
+        start_date: new Date().toISOString()
+      });
     }
-  } catch (e) { console.log("Join Check Error"); }
 
-  // Deep Link Logic
-  if (startParam && VIDEO_MAP[startParam]) {
-    const messageId = VIDEO_MAP[startParam];
-    await ctx.telegram.copyMessage(ctx.chat.id, process.env.CHANNEL_ID, messageId);
-  } else {
-    ctx.reply("স্বাগতম! আপনি কোনো ভ্যালিড লিংক ব্যবহার করেননি।");
+    // --- ২. Channel Join Check ---
+    const member = await ctx.telegram.getChatMember(process.env.CHANNEL_ID, userId);
+    const isJoined = ['creator', 'administrator', 'member'].includes(member.status);
+
+    if (!isJoined) {
+      return ctx.reply(
+        "❌ আপনি আমাদের চ্যানেলে জয়েন নেই!\n\nভিডিওটি পেতে নিচের বাটনে ক্লিক করে জয়েন করুন এবং আবার লিংকে ক্লিক করুন।",
+        Markup.inlineKeyboard([
+          [Markup.button.url("📢 Join Channel", `https://t.me/your_channel_username`)] // আপনার চ্যানেলের লিংক দিন
+        ])
+      );
+    }
+
+    // --- ৩. সরাসরি Message ID দিয়ে ভিডিও পাঠানো ---
+    if (startParam && !isNaN(startParam)) {
+      // startParam-এ থাকা সংখ্যাটিকে message_id হিসেবে ব্যবহার করে ভিডিও কপি করা
+      await ctx.telegram.copyMessage(ctx.chat.id, process.env.CHANNEL_ID, parseInt(startParam));
+    } else {
+      ctx.reply("স্বাগতম! ভিডিও পেতে সঠিক লিংকে ক্লিক করুন।");
+    }
+
+  } catch (error) {
+    console.error("Error:", error);
+    ctx.reply("কিছু একটা সমস্যা হয়েছে। সম্ভবত ভিডিওটি খুঁজে পাওয়া যায়নি বা বটটি চ্যানেলে অ্যাডমিন নয়।");
   }
 });
 
-// ৩. Broadcast System (Admin Only)
+// ৪. Admin Broadcast System
 bot.command('broadcast', async (ctx) => {
   if (ctx.from.id.toString() !== process.env.ADMIN_ID) return ctx.reply("Not Authorized!");
   
@@ -56,21 +59,28 @@ bot.command('broadcast', async (ctx) => {
   const usersSnapshot = await db.collection('users').get();
   let count = 0;
 
+  ctx.reply(`ব্রডকাস্ট শুরু হয়েছে...`);
+
   for (const doc of usersSnapshot.docs) {
     try {
       await ctx.telegram.sendMessage(doc.id, msg);
       count++;
-    } catch (e) { continue; }
+    } catch (e) {
+      continue; // ইউজার বট ব্লক করলে স্কিপ করবে
+    }
   }
-  ctx.reply(`ব্রডকাস্ট সম্পন্ন! সফল: ${count} জন।`);
+  ctx.reply(`✅ ব্রডকাস্ট সফল! মোট পাঠানো হয়েছে: ${count} জনকে।`);
 });
 
-// Webhook Export for Vercel
+// Vercel Webhook Export
 module.exports = async (req, res) => {
   try {
-    await bot.handleUpdate(req.body);
+    if (req.method === 'POST') {
+      await bot.handleUpdate(req.body);
+    }
     res.status(200).send('OK');
   } catch (err) {
+    console.error(err);
     res.status(500).send('Error');
   }
 };

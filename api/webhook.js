@@ -3,7 +3,7 @@ const db = require('../lib/firebase');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// ১. র‍্যান্ডম লেটার জেনারেটর
+// ১. র‍্যান্ডম লেটার জেনারেটর (১০ অক্ষরের)
 function generateRandomSlug(length = 10) {
   const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
   let result = '';
@@ -13,7 +13,7 @@ function generateRandomSlug(length = 10) {
   return result;
 }
 
-// ২. মিডিয়া হ্যান্ডলার (ভিডিও, ফাইল ইত্যাদি)
+// ২. মিডিয়া হ্যান্ডলার (ভিডিও, ফাইল, ফটো ইত্যাদি)
 bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async (ctx) => {
   const waitMsg = await ctx.reply("⚡ প্রসেসিং হচ্ছে... লিঙ্ক তৈরি করা হচ্ছে।");
   try {
@@ -84,46 +84,61 @@ bot.start(async (ctx) => {
   } catch (e) { ctx.reply("ত্রুটি ঘটেছে।"); }
 });
 
-// ৪. উন্নত ও দ্রুত ব্রডকাস্ট সিস্টেম (Fix for Multiple Messages)
+// ৪. উন্নত ব্রডকাস্ট সিস্টেম (সফল ও ব্যর্থ ইউজারের হিসাবসহ)
 bot.command('broadcast', async (ctx) => {
   const adminId = process.env.ADMIN_ID;
   if (ctx.from.id.toString() !== adminId) return ctx.reply("❌ আপনি এডমিন নন।");
 
   const msg = ctx.message.text.split(' ').slice(1).join(' ');
-  if (!msg) return ctx.reply("❌ মেসেজ লিখুন। উদাহরণ: /broadcast Hello");
+  if (!msg) return ctx.reply("❌ মেসেজ লিখুন। উদাহরণ: /broadcast আসসালামু আলাইকুম");
 
   try {
     const usersSnapshot = await db.collection('users').get();
-    if (usersSnapshot.empty) return ctx.reply("❌ কোনো ইউজার নেই।");
+    if (usersSnapshot.empty) return ctx.reply("❌ ডাটাবেসে কোনো ইউজার নেই।");
 
     const userIds = usersSnapshot.docs.map(doc => doc.id);
-    await ctx.reply(`📢 ${userIds.length} জনকে পাঠানো শুরু হয়েছে...`);
+    await ctx.reply(`📢 ${userIds.length} জন ইউজারকে মেসেজ পাঠানো শুরু হয়েছে...`);
 
-    // একসাথে অনেককে পাঠানোর জন্য Promise.allSettled ব্যবহার (খুবই দ্রুত)
-    const promises = userIds.map(id => 
-      ctx.telegram.sendMessage(id, msg).catch(e => console.log(`Failed for ${id}`))
-    );
+    // সব মেসেজ একসাথে পাঠানোর জন্য প্রমিজ তৈরি
+    const promises = userIds.map(id => ctx.telegram.sendMessage(id, msg));
 
-    await Promise.allSettled(promises);
-    ctx.reply("✅ ব্রডকাস্ট সম্পন্ন হয়েছে!");
+    // সব রেজাল্ট একসাথে চেক করা
+    const results = await Promise.allSettled(promises);
+
+    let successCount = 0;
+    let failCount = 0;
+
+    results.forEach((result) => {
+      if (result.status === 'fulfilled') {
+        successCount++;
+      } else {
+        failCount++;
+      }
+    });
+
+    ctx.reply(
+      `✅ **ব্রডকাস্ট সম্পন্ন হয়েছে!**\n\n` +
+      `🚀 **সফলভাবে পাঠানো হয়েছে:** ${successCount} জন\n` +
+      `❌ **ব্যর্থ হয়েছে:** ${failCount} জন\n\n` +
+      `💡 (যারা বট ব্লক করেছে তাদের কাছে মেসেজ যায়নি।)`
+    , { parse_mode: 'Markdown' });
 
   } catch (error) {
-    ctx.reply("❌ ডাটাবেস এরর।");
+    console.error("Broadcast Error:", error);
+    ctx.reply("❌ ডাটাবেস থেকে ইউজার লিস্ট নিতে সমস্যা হয়েছে।");
   }
 });
 
-// ৫. Webhook Handler (সরাসরি রেসপন্স দেওয়ার জন্য পরিবর্তন)
+// ৫. Webhook Handler (Vercel Fix)
 module.exports = async (req, res) => {
   try {
     if (req.method === 'POST') {
-      // টেলিগ্রামকে দ্রুত রেসপন্স পাঠানোর জন্য handleUpdate কে await ছাড়া চালানো যেতে পারে 
-      // কিন্তু Vercel এ await করাই নিরাপদ, তবে ব্রডকাস্ট লজিক আমরা অপ্টিমাইজ করেছি।
       await bot.handleUpdate(req.body);
     }
     res.status(200).send('OK');
   } catch (err) {
     console.error(err);
-    // এরর হলেও OK পাঠানো ভালো যাতে টেলিগ্রাম বারবার রিট্রাই না করে
+    // এরর হলেও OK পাঠানো ভালো যাতে টেলিগ্রাম বারবার রিট্রাই না করে একই মেসেজ বারবার না পাঠায়
     res.status(200).send('OK');
   }
 };

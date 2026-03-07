@@ -3,7 +3,7 @@ const db = require('../lib/firebase');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// ১. র‍্যান্ডম লেটার জেনারেটর ফাংশন (১০ অক্ষরের)
+// ১. র‍্যান্ডম লেটার জেনারেটর (১০ অক্ষর)
 function generateRandomSlug(length = 10) {
   const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
   let result = '';
@@ -13,72 +13,73 @@ function generateRandomSlug(length = 10) {
   return result;
 }
 
-// ২. মিডিয়া হ্যান্ডলার (ফটো, ভিডিও, ফাইল, APK) - ক্যাপশন রিমুভ করবে
+// ২. মিডিয়া হ্যান্ডলার (ভিডিও, ফটো, ফাইল, APK)
 bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async (ctx) => {
-  const waitMsg = await ctx.reply("⚡ প্রসেসিং হচ্ছে... ক্যাপশন রিমুভ করা হচ্ছে।");
+  const waitMsg = await ctx.reply("⚡ প্রসেসিং হচ্ছে... দয়া করে অপেক্ষা করুন।");
 
   try {
     const user = ctx.from;
-    const userMention = `[${user.first_name}](tg://user?id=${user.id})`;
+    const firstName = user.first_name.replace(/[<>]/g, ''); // HTML এরর এড়াতে
     const username = user.username ? `@${user.username}` : "নেই";
 
-    // ক) ফাইলটি চ্যানেলে কপি করা (caption: "" দেওয়ার ফলে আগের সব লেখা মুছে যাবে)
+    // ক) ফাইলটি চ্যানেলে কপি করা (ক্যাপশন ছাড়া)
     const sentMsg = await ctx.telegram.copyMessage(
       process.env.CHANNEL_ID,
       ctx.chat.id,
       ctx.message.message_id,
-      { caption: "" } // এটি ভিডিওর নিচের সব টেক্সট বা লিংক মুছে দিবে
+      { caption: "" }
     );
 
     const messageId = sentMsg.message_id;
 
-    // খ) 'file' প্রিফিক্স দিয়ে ইউনিক লেটার স্লাগ তৈরি
+    // খ) লিঙ্ক তৈরি করা
     const slug = `file${generateRandomSlug(10)}`; 
+    // যদি ctx.botInfo কাজ না করে তবে সরাসরি বটের ইউজারনেম লিখে দিন
+    const botUsername = ctx.botInfo ? ctx.botInfo.username : "YourBotUsername"; 
+    const shareLink = `https://t.me/${botUsername}?start=${slug}`;
 
-    // গ) চ্যানেলে আপলোডারের তথ্য আলাদা মেসেজে পাঠানো
-    const infoText = `📥 **নতুন ফাইল আপলোড হয়েছে!**\n\n` +
-                     `👤 নাম: ${user.first_name}\n` +
-                     `🆔 ইউজারনেম: ${username}\n` +
-                     `🔗 মেনশন: ${userMention}\n` +
-                     `🆔 ইউজার আইডি: \`${user.id}\``;
+    // গ) চ্যানেলে ইনফো মেসেজ পাঠানো (HTML ফরম্যাটে যা বেশি নিরাপদ)
+    const infoText = `<b>📥 নতুন ফাইল আপলোড হয়েছে!</b>\n\n` +
+                     `👤 <b>নাম:</b> ${firstName}\n` +
+                     `🆔 <b>ইউজারনেম:</b> ${username}\n` +
+                     `🆔 <b>ইউজার আইডি:</b> <code>${user.id}</code>\n\n` +
+                     `🚀 <b>ফাইল লিঙ্ক:</b> ${shareLink}`;
 
-    await ctx.telegram.sendMessage(process.env.CHANNEL_ID, infoText, { parse_mode: 'Markdown' });
+    await ctx.telegram.sendMessage(process.env.CHANNEL_ID, infoText, { parse_mode: 'HTML' });
 
     // ঘ) Firebase-এ ডাটা সেভ করা
     await db.collection('videos').doc(slug).set({
       slug: slug,
       message_id: messageId,
       uploader_id: user.id,
-      uploader_name: user.first_name,
       created_at: new Date().toISOString()
     });
 
-    // ঙ) ইউজারের জন্য লিঙ্ক জেনারেট করা
-    const shareLink = `https://t.me/${ctx.botInfo.username}?start=${slug}`;
+    // ঙ) ইউজারকে শেয়ারিং লিঙ্ক দেওয়া
     await ctx.telegram.deleteMessage(ctx.chat.id, waitMsg.message_id);
     
     await ctx.reply(
-      `✅ আপনার ফাইলটি ক্যাপশন ছাড়াই সেভ হয়েছে!\n\n🔗 লিঙ্ক: ${shareLink}`,
+      `✅ আপনার ফাইলটি সফলভাবে চ্যানেলে সেভ হয়েছে!\n\n🔗 লিঙ্ক: ${shareLink}`,
       Markup.inlineKeyboard([
         [Markup.button.url("🚀 শেয়ার করুন", `https://t.me/share/url?url=${shareLink}`)]
       ])
     );
 
   } catch (error) {
-    console.error("Error:", error);
-    ctx.reply("❌ এটি সেভ করা সম্ভব হয়নি।");
+    console.error("Error Detail:", error); // ভেরসেল লগে এরর দেখার জন্য
+    ctx.reply("❌ কোনো সমস্যা হয়েছে। আইডি বা পারমিশন চেক করুন।");
   }
 });
 
-// ৩. টেক্সট মেসেজ ব্লক করা (শুধুমাত্র কমান্ড ছাড়া)
+// ৩. টেক্সট মেসেজ ব্লক করা
 bot.on('text', async (ctx, next) => {
   if (!ctx.message.text.startsWith('/')) {
-    return ctx.reply("❌ শুধুমাত্র ফটো, ভিডিও বা ফাইল শেয়ার করা যাবে। টেক্সট বা লিংক এলাউড নয়।");
+    return ctx.reply("❌ শুধুমাত্র ভিডিও বা ফাইল পাঠান।");
   }
   return next();
 });
 
-// ৪. /start কমান্ড হ্যান্ডলার
+// ৪. /start কমান্ড
 bot.start(async (ctx) => {
   const userId = ctx.from.id.toString();
   const startParam = ctx.startPayload;
@@ -104,22 +105,11 @@ bot.start(async (ctx) => {
         ctx.reply("❌ ফাইলটি খুঁজে পাওয়া যায়নি।");
       }
     } else {
-      ctx.reply(`স্বাগতম ${ctx.from.first_name}!\nফাইল শেয়ার করতে এখানে মিডিয়া পাঠান।`);
+      ctx.reply(`স্বাগতম ${ctx.from.first_name}!`);
     }
   } catch (error) {
-    ctx.reply("সমস্যা হয়েছে।");
+    ctx.reply("ত্রুটি ঘটেছে।");
   }
-});
-
-// ৫. এডমিন ব্রডকাস্ট সিস্টেম
-bot.command('broadcast', async (ctx) => {
-  if (ctx.from.id.toString() !== process.env.ADMIN_ID) return;
-  const msg = ctx.message.text.split(' ').slice(1).join(' ');
-  const usersSnapshot = await db.collection('users').get();
-  for (const doc of usersSnapshot.docs) {
-    try { await ctx.telegram.sendMessage(doc.id, msg); } catch (e) {}
-  }
-  ctx.reply("ব্রডকাস্ট সম্পন্ন।");
 });
 
 module.exports = async (req, res) => {

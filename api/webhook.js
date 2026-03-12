@@ -20,7 +20,8 @@ bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async
     const user = ctx.from;
     const sentMsg = await ctx.telegram.copyMessage(process.env.CHANNEL_ID, ctx.chat.id, ctx.message.message_id, { caption: "" });
     const slug = `file${generateRandomSlug(10)}`; 
-    const shareLink = `https://t.me/${ctx.botInfo.username}?start=${slug}`;
+    const botInfo = await ctx.telegram.getMe();
+    const shareLink = `https://t.me/${botInfo.username}?start=${slug}`;
 
     await ctx.telegram.sendMessage(process.env.CHANNEL_ID, 
       `📥 <b>নতুন ফাইল আপলোড!</b>\n\n👤 নাম: ${user.first_name}\n🆔 আইডি: <code>${user.id}</code>\n🚀 লিঙ্ক: ${shareLink}`, 
@@ -41,7 +42,7 @@ bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async
   } catch (e) { ctx.reply("❌ এরর ঘটেছে।"); }
 });
 
-// ৩. /start কমান্ড (রেফারেল ও চ্যানেল নোটিফিকেশনসহ)
+// ৩. /start কমান্ড (রেফারেল সিস্টেম রিমুভ করা হয়েছে)
 bot.start(async (ctx) => {
   const userId = ctx.from.id.toString();
   const startParam = ctx.startPayload;
@@ -51,39 +52,16 @@ bot.start(async (ctx) => {
     let userDoc = await userRef.get();
 
     if (!userDoc.exists) {
-      let referrerId = null;
-      if (startParam && startParam.startsWith('ref')) {
-        referrerId = startParam.replace('ref', '');
-        
-        if (referrerId !== userId) {
-          const refUserRef = db.collection('users').doc(referrerId);
-          const refUserDoc = await refUserRef.get();
-          
-          if (refUserDoc.exists) {
-            // ইনভাইটারকে কয়েন দেওয়া
-            await refUserRef.update({ coins: (refUserDoc.data().coins || 0) + 5 });
-            await ctx.telegram.sendMessage(referrerId, `🎊 অভিনন্দন! আপনার লিঙ্কে নতুন একজন জয়েন করেছে। আপনি ৫ কয়েন পেয়েছেন।`);
-
-            // --- চ্যানেলে রেফার ইনফর্মেশন পাঠানো ---
-            const refInfoText = `👥 <b>নতুন রেফারেল!</b>\n\n` +
-                                `👤 নতুন ইউজার: ${ctx.from.first_name} (<code>${userId}</code>)\n` +
-                                `🤝 ইনভাইট করেছে: ${refUserDoc.data().first_name} (<code>${referrerId}</code>)\n` +
-                                `💰 বোনাস: ৫ কয়েন`;
-            await ctx.telegram.sendMessage(process.env.CHANNEL_ID, refInfoText, { parse_mode: 'HTML' });
-          }
-        }
-      }
-      
       await userRef.set({
         user_id: userId,
         first_name: ctx.from.first_name,
         coins: 0,
-        referred_by: referrerId,
         start_date: new Date().toISOString()
       });
       userDoc = await userRef.get();
     }
 
+    // ফাইল লিঙ্ক হ্যান্ডলিং
     if (startParam && startParam.startsWith('file')) {
       const videoDoc = await db.collection('videos').doc(startParam).get();
       if (videoDoc.exists) {
@@ -91,12 +69,11 @@ bot.start(async (ctx) => {
       }
     }
 
+    // সাধারণ স্বাগতম মেসেজ
     const balance = userDoc.data().coins || 0;
-    const refLink = `https://t.me/${ctx.botInfo.username}?start=ref${userId}`;
     const welcomeText = `স্বাগতম <b>${ctx.from.first_name}</b>!\nআপনার আইডি: <code>${userId}</code>\n\n` +
-                        `💰 আপনার ব্যালেন্স: <b>${balance}</b> কয়েন\n` +
-                        `🔗 রেফার লিঙ্ক: <code>${refLink}</code>\n\n` +
-                        `প্রতি রেফারে ৫ কয়েন। মিনিমাম উইথড্র ১০০০ কয়েন।`;
+                        `💰 আপনার ব্যালেন্স: <b>${balance}</b> কয়েন\n\n` +
+                        `আপনার ফাইল বা ভিডিও দিয়ে ইউনিক লিঙ্ক পেতে এখানে ফাইলটি সেন্ড করুন। ✔️`;
 
     await ctx.reply(welcomeText, {
       parse_mode: 'HTML',
@@ -160,7 +137,7 @@ bot.command('broadcast', async (ctx) => {
   const users = await db.collection('users').get();
   const promises = users.docs.map(doc => ctx.telegram.sendMessage(doc.id, msg));
   await Promise.allSettled(promises);
-  ctx.reply("✅ সম্পন্ন।");
+  ctx.reply("✅ ব্রডকাস্ট সম্পন্ন।");
 });
 
 module.exports = async (req, res) => {

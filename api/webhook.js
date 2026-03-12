@@ -20,6 +20,7 @@ bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async
   try {
     const user = ctx.from;
     const firstName = user.first_name.replace(/[<>]/g, ''); 
+    const mention = `<a href="tg://user?id=${user.id}">${firstName}</a>`;
 
     // ফাইলটি চ্যানেলে কপি করা (ক্যাপশন রিমুভ করে)
     const sentMsg = await ctx.telegram.copyMessage(
@@ -34,10 +35,11 @@ bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async
     const botInfo = await ctx.telegram.getMe();
     const shareLink = `https://t.me/${botInfo.username}?start=${slug}`;
 
-    // চ্যানেলে ইনফো পাঠানো
-    const infoText = `<b>📥 নতুন ফাইল আপলোড!</b>\n\n` +
+    // আপনার দেওয়া ফরম্যাটে চ্যানেলে ইনফো পাঠানো
+    const infoText = `📥 <b>নতুন ফাইল আপলোড!</b>\n\n` +
                      `👤 <b>নাম:</b> ${firstName}\n` +
                      `🆔 <b>আইডি:</b> <code>${user.id}</code>\n` +
+                     `💌 <b>ম্যানশন:</b> ${mention}\n` +
                      `🚀 <b>লিঙ্ক:</b> ${shareLink}`;
 
     await ctx.telegram.sendMessage(process.env.CHANNEL_ID, infoText, { parse_mode: 'HTML' });
@@ -73,13 +75,12 @@ bot.on('text', async (ctx, next) => {
   return next();
 });
 
-// ৪. /start কমান্ড (রেফারেল ও কয়েন ছাড়া ক্লিন মেনু)
+// ৪. /start কমান্ড
 bot.start(async (ctx) => {
   const userId = ctx.from.id.toString();
   const startParam = ctx.startPayload;
 
   try {
-    // ইউজার সেভ করা (ব্রডকাস্টের জন্য প্রয়োজনীয়)
     const userRef = db.collection('users').doc(userId);
     const userDoc = await userRef.get();
     if (!userDoc.exists) {
@@ -91,7 +92,6 @@ bot.start(async (ctx) => {
     }
 
     if (startParam) {
-      // লিঙ্কে ক্লিক করলে ফাইল পাঠানো
       const videoDoc = await db.collection('videos').doc(startParam).get();
       if (videoDoc.exists) {
         const { message_id } = videoDoc.data();
@@ -100,7 +100,6 @@ bot.start(async (ctx) => {
         ctx.reply("❌ দুঃখিত, ফাইলটি খুঁজে পাওয়া যায়নি।");
       }
     } else {
-      // সাধারণ স্বাগতম মেসেজ
       const welcomeText = `স্বাগতম! আপনার আইডি: <code>${userId}</code>\n\n` +
                           `আপনার ফাইল বা ভিডিও দিয়ে ইউনিক লিঙ্ক পেতে এখানে ফাইলটি সেন্ড করুন। ✔️`;
 
@@ -126,8 +125,6 @@ bot.command('broadcast', async (ctx) => {
 
   try {
     const usersSnapshot = await db.collection('users').get();
-    if (usersSnapshot.empty) return ctx.reply("❌ কোনো ইউজার নেই।");
-
     const userIds = usersSnapshot.docs.map(doc => doc.id);
     await ctx.reply(`📢 ব্রডকাস্ট শুরু হয়েছে...`);
 

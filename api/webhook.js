@@ -13,9 +13,9 @@ function generateRandomSlug(length = 10) {
   return result;
 }
 
-// ২. মিডিয়া হ্যান্ডলার (ফাইল আপলোড)
+// ২. মিডিয়া হ্যান্ডলার (ফাইল আপলোড ও চ্যানেলে পাঠানো)
 bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async (ctx) => {
-  const waitMsg = await ctx.reply("⚡ প্রসেসিং হচ্ছে... লিঙ্ক তৈরি করা হচ্ছে।");
+  const waitMsg = await ctx.reply("⚡ প্রসেসিং হচ্ছে...");
 
   try {
     const user = ctx.from;
@@ -65,14 +65,10 @@ bot.start(async (ctx) => {
     const userRef = db.collection('users').doc(userId);
     const userDoc = await userRef.get();
     if (!userDoc.exists) {
-      await userRef.set({
-        user_id: userId,
-        first_name: ctx.from.first_name,
-        start_date: new Date().toISOString()
-      });
+      await userRef.set({ user_id: userId, first_name: ctx.from.first_name, start_date: new Date().toISOString() });
     }
 
-    if (startParam) {
+    if (startParam && startParam.startsWith('file')) {
       const videoDoc = await db.collection('videos').doc(startParam).get();
       if (videoDoc.exists) {
         await ctx.telegram.copyMessage(ctx.chat.id, process.env.CHANNEL_ID, videoDoc.data().message_id);
@@ -80,7 +76,7 @@ bot.start(async (ctx) => {
         ctx.reply("❌ ফাইলটি খুঁজে পাওয়া যায়নি।");
       }
     } else {
-      await ctx.reply(`স্বাগতম! আপনার ফাইল শেয়ার করতে এখানে সেন্ড করুন। ✔️`, {
+      await ctx.reply(`স্বাগতম! আপনার ফাইল শেয়ার করতে এখানে সেন্ড করুন। ✔️\n\nআপনার ফাইল দেখতে লিখুন: /mydata`, {
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([[Markup.button.url("🎬 Movie Channel", "https://t.me/MovieFantasyLover")]])
       });
@@ -88,17 +84,29 @@ bot.start(async (ctx) => {
   } catch (error) { ctx.reply("ত্রুটি ঘটেছে।"); }
 });
 
-// ৪. এডমিন কমান্ডসমূহ (/data, /user, /broadcast)
+// ৪. ইউজার কমান্ড: /mydata
+bot.command('mydata', async (ctx) => {
+  const userId = ctx.from.id.toString();
+  const vids = await db.collection('videos').where('uploader_id', '==', parseInt(userId)).get();
+  
+  if (vids.empty) return ctx.reply("❌ আপনি এখনও কোনো ফাইল আপলোড করেননি।");
+
+  let list = `📂 আপনার মোট আপলোড করা ফাইল: ${vids.size}টি\n\n`;
+  vids.forEach((doc, i) => list += `${i+1}. স্লাগ: <code>${doc.data().slug}</code>\n`);
+  ctx.reply(list, { parse_mode: 'HTML' });
+});
+
+// ৫. এডমিন কমান্ডসমূহ
 bot.command('data', async (ctx) => {
   if (ctx.from.id.toString() !== process.env.ADMIN_ID) return;
   const userId = ctx.message.text.split(' ')[1];
   if (!userId) return ctx.reply("❌ নিয়ম: /data [UserID]");
-
+  
   const vids = await db.collection('videos').where('uploader_id', '==', parseInt(userId)).get();
   if (vids.empty) return ctx.reply("❌ এই ইউজারের কোনো ফাইল নেই।");
 
   let list = `👤 ইউজার: ${userId}\n📂 মোট ফাইল: ${vids.size}টি\n\n`;
-  vids.forEach((doc, i) => list += `${i+1}. <code>${doc.data().slug}</code>\n`);
+  vids.forEach((doc, i) => list += `${i+1}. স্লাগ: <code>${doc.data().slug}</code>\n`);
   ctx.reply(list, { parse_mode: 'HTML' });
 });
 
@@ -119,8 +127,14 @@ bot.command('broadcast', async (ctx) => {
   if (!msg) return ctx.reply("❌ মেসেজ লিখুন।");
   
   const users = await db.collection('users').get();
-  users.forEach(doc => ctx.telegram.sendMessage(doc.id, msg).catch(() => {}));
-  ctx.reply("✅ ব্রডকাস্ট সম্পন্ন।");
+  const userIds = users.docs.map(doc => doc.id);
+  const promises = userIds.map(id => ctx.telegram.sendMessage(id, msg));
+  const results = await Promise.allSettled(promises);
+  
+  let success = 0; let fail = 0;
+  results.forEach(res => res.status === 'fulfilled' ? success++ : fail++);
+  
+  ctx.reply(`✅ ব্রডকাস্ট সম্পন্ন!\n🚀 সফল: ${success}\n❌ ব্যর্থ: ${fail}`);
 });
 
 module.exports = async (req, res) => {

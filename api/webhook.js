@@ -19,7 +19,7 @@ bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async
 
   try {
     const user = ctx.from;
-    const firstName = user.first_name.replace(/[<>]/g, ''); 
+    const firstName = user.first_name ? user.first_name.replace(/[<>]/g, '') : "Unknown";
     const mention = `<a href="tg://user?id=${user.id}">${firstName}</a>`;
 
     const sentMsg = await ctx.telegram.copyMessage(
@@ -52,6 +52,7 @@ bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async
     await ctx.reply(`✅ ফাইলটি সেভ হয়েছে!\n\n🔗 লিঙ্ক: ${shareLink}`, Markup.inlineKeyboard([[Markup.button.url("🚀 শেয়ার করুন", `https://t.me/share/url?url=${shareLink}`)]]));
 
   } catch (error) {
+    console.error(error);
     ctx.reply("❌ এরর! বট চ্যানেলে এডমিন আছে কি না চেক করুন।");
   }
 });
@@ -65,7 +66,7 @@ bot.start(async (ctx) => {
     const userRef = db.collection('users').doc(userId);
     const userDoc = await userRef.get();
     if (!userDoc.exists) {
-      await userRef.set({ user_id: userId, first_name: ctx.from.first_name, start_date: new Date().toISOString() });
+      await userRef.set({ user_id: userId, first_name: ctx.from.first_name || "Unknown", start_date: new Date().toISOString() });
     }
 
     if (startParam && startParam.startsWith('file')) {
@@ -76,7 +77,7 @@ bot.start(async (ctx) => {
         ctx.reply("❌ ফাইলটি খুঁজে পাওয়া যায়নি।");
       }
     } else {
-      await ctx.reply(`স্বাগতম! আপনার ফাইল শেয়ার করতে এখানে সেন্ড করুন। ✔️\n\nআপনার ফাইল দেখতে লিখুন: /mydata`, {
+      await ctx.reply(`স্বাগতম! আপনার ফাইল শেয়ার করতে এখানে সেন্ড করুন। ✔️\n\nআপনি চাইলে /mydata লিখে আপনার ফাইল দেখতে পারেন।`, {
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([[Markup.button.url("🎬 Movie Channel", "https://t.me/MovieFantasyLover")]])
       });
@@ -96,7 +97,7 @@ bot.command('mydata', async (ctx) => {
   ctx.reply(list, { parse_mode: 'HTML' });
 });
 
-// ৫. এডমিন কমান্ডসমূহ
+// ৫. এডমিন কমান্ডসমূহ (/data, /user, /broadcast)
 bot.command('data', async (ctx) => {
   if (ctx.from.id.toString() !== process.env.ADMIN_ID) return;
   const userId = ctx.message.text.split(' ')[1];
@@ -116,7 +117,7 @@ bot.command('user', async (ctx) => {
   let list = `👥 মোট ইউজার: ${users.size} জন\n\n`;
   users.forEach(doc => {
     const u = doc.data();
-    list += `• <a href="tg://user?id=${u.user_id}">${u.first_name}</a> (ID: <code>${u.user_id}</code>)\n`;
+    list += `• <a href="tg://user?id=${u.user_id}">${u.first_name || "User"}</a> (ID: <code>${u.user_id}</code>)\n`;
   });
   ctx.reply(list, { parse_mode: 'HTML' });
 });
@@ -124,16 +125,14 @@ bot.command('user', async (ctx) => {
 bot.command('broadcast', async (ctx) => {
   if (ctx.from.id.toString() !== process.env.ADMIN_ID) return;
   const msg = ctx.message.text.split(' ').slice(1).join(' ');
-  if (!msg) return ctx.reply("❌ মেসেজ লিখুন।");
+  if (!msg) return ctx.reply("❌ নিয়ম: /broadcast [আপনার মেসেজ]");
   
   const users = await db.collection('users').get();
-  const userIds = users.docs.map(doc => doc.id);
-  const promises = userIds.map(id => ctx.telegram.sendMessage(id, msg));
+  const promises = users.docs.map(doc => ctx.telegram.sendMessage(doc.id, msg));
   const results = await Promise.allSettled(promises);
   
   let success = 0; let fail = 0;
   results.forEach(res => res.status === 'fulfilled' ? success++ : fail++);
-  
   ctx.reply(`✅ ব্রডকাস্ট সম্পন্ন!\n🚀 সফল: ${success}\n❌ ব্যর্থ: ${fail}`);
 });
 

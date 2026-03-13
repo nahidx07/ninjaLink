@@ -92,8 +92,12 @@ bot.command('mydata', async (ctx) => {
   
   if (vids.empty) return ctx.reply("❌ আপনি এখনও কোনো ফাইল আপলোড করেননি।");
 
-  let list = `📂 আপনার মোট আপলোড করা ফাইল: ${vids.size}টি\n\n`;
-  vids.forEach((doc, i) => list += `${i+1}. স্লাগ: <code>${doc.data().slug}</code>\n`);
+  let list = `📂 আপনার মোট আপলোড করা ফাইল: ${vids.size}টি\n\n` +
+             `💡 <b>ফাইল পেতে এই লিঙ্কে ক্লিক করুন:</b>\n` +
+             `https://t.me/NinjaLink_bot?start=<code>[ফাইল আইডি]</code>\n\n` +
+             `আপনার আপলোড করা ফাইলের তালিকা:\n\n`;
+
+  vids.forEach((doc, i) => list += `${i+1}. আইডি: <code>${doc.data().slug}</code>\n`);
   ctx.reply(list, { parse_mode: 'HTML' });
 });
 
@@ -107,7 +111,7 @@ bot.command('data', async (ctx) => {
   if (vids.empty) return ctx.reply("❌ এই ইউজারের কোনো ফাইল নেই।");
 
   let list = `👤 ইউজার: ${userId}\n📂 মোট ফাইল: ${vids.size}টি\n\n`;
-  vids.forEach((doc, i) => list += `${i+1}. স্লাগ: <code>${doc.data().slug}</code>\n`);
+  vids.forEach((doc, i) => list += `${i+1}. আইডি: <code>${doc.data().slug}</code>\n`);
   ctx.reply(list, { parse_mode: 'HTML' });
 });
 

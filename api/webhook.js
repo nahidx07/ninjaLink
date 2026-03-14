@@ -1,6 +1,3 @@
-Api/webhook.js
-
-
 const { Telegraf, Markup } = require('telegraf');
 const db = require('../lib/firebase');
 

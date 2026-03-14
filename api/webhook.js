@@ -13,14 +13,18 @@ function generateRandomSlug(length = 10) {
   return result;
 }
 
-// ২. মিডিয়া হ্যান্ডলার (ফাইল আপলোড)
+// ২. মিডিয়া হ্যান্ডলার (ক্যাপশনসহ চ্যানেলে কপি হবে)
 bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async (ctx) => {
-  const waitMsg = await ctx.reply("⚡ প্রসেসিং হচ্ছে...");
+  const waitMsg = await ctx.reply("⚡ ক্যাপশনসহ প্রসেসিং হচ্ছে...");
   try {
-    const user = ctx.from;
-    const firstName = user.first_name ? user.first_name.replace(/[<>]/g, '') : "Unknown";
-    
-    const sentMsg = await ctx.telegram.copyMessage(process.env.CHANNEL_ID, ctx.chat.id, ctx.message.message_id, { caption: "" });
+    const originalCaption = ctx.message.caption || ""; 
+    const sentMsg = await ctx.telegram.copyMessage(
+      process.env.CHANNEL_ID, 
+      ctx.chat.id, 
+      ctx.message.message_id, 
+      { caption: originalCaption }
+    );
+
     const slug = `file${generateRandomSlug(10)}`; 
     const botInfo = await ctx.telegram.getMe();
     const shareLink = `https://t.me/${botInfo.username}?start=${slug}`;
@@ -28,7 +32,7 @@ bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async
     await db.collection('videos').doc(slug).set({
       slug: slug,
       message_id: sentMsg.message_id,
-      uploader_id: user.id,
+      uploader_id: ctx.from.id,
       created_at: new Date().toISOString()
     });
 
@@ -39,18 +43,16 @@ bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async
   }
 });
 
-// ৩. /start কমান্ড
+// ৩. /start কমান্ড (ক্যাপশন ছাড়া রিকভারি হবে)
 bot.start(async (ctx) => {
-  const userId = ctx.from.id.toString();
   const startParam = ctx.startPayload;
-  
   if (!startParam) {
-    return ctx.reply(`স্বাগতম! আপনার ফাইল শেয়ার করতে এখানে সেন্ড করুন। ✔️`, Markup.inlineKeyboard([[Markup.button.url("🎬 Movie Channel", "https://t.me/MovieFantasyLover")]]));
+    return ctx.reply(`স্বাগতম! ফাইল শেয়ার করতে এখানে পাঠান।`, Markup.inlineKeyboard([[Markup.button.url("🎬 Movie Channel", "https://t.me/MovieFantasyLover")]]));
   }
 
   const videoDoc = await db.collection('videos').doc(startParam).get();
   if (videoDoc.exists) {
-    await ctx.telegram.copyMessage(ctx.chat.id, process.env.CHANNEL_ID, videoDoc.data().message_id);
+    await ctx.telegram.copyMessage(ctx.chat.id, process.env.CHANNEL_ID, videoDoc.data().message_id, { caption: "" });
   } else {
     ctx.reply("❌ ফাইলটি খুঁজে পাওয়া যায়নি।");
   }
@@ -65,13 +67,13 @@ bot.command('mydata', async (ctx) => {
   ctx.reply(list, { parse_mode: 'HTML' });
 });
 
-// ৫. টেক্সট হ্যান্ডলার (আইডি লিখে পাঠালে ফাইল দেওয়ার জন্য)
+// ৫. টেক্সট হ্যান্ডলার (আইডি দিলে ফাইল ক্যাপশন ছাড়া যাবে)
 bot.on('text', async (ctx) => {
   const text = ctx.message.text.trim();
   if (text.startsWith('file')) {
     const videoDoc = await db.collection('videos').doc(text).get();
     if (videoDoc.exists) {
-      await ctx.telegram.copyMessage(ctx.chat.id, process.env.CHANNEL_ID, videoDoc.data().message_id);
+      await ctx.telegram.copyMessage(ctx.chat.id, process.env.CHANNEL_ID, videoDoc.data().message_id, { caption: "" });
     } else {
       ctx.reply("❌ দুঃখিত, এই আইডি দিয়ে কোনো ফাইল পাওয়া যায়নি।");
     }

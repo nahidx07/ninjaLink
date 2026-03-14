@@ -81,7 +81,7 @@ bot.start(async (ctx) => {
       }
     } else {
       await ctx.reply(`স্বাগতম! আপনার ফাইল শেয়ার করতে এখানে সেন্ড করুন। ✔️`, {
-        ...Markup.inlineKeyboard([[Markup.button.url("🎬 Movie Channel", "https://t.me/MovieFantasyLover")]])
+        ...Markup.inlineKeyboard([[Markup.button.url("Developer Ninja", "https://t.me/DeveloperNinja")]])
       });
     }
   } catch (error) { ctx.reply("ত্রুটি ঘটেছে।"); }

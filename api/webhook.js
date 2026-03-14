@@ -84,7 +84,7 @@ bot.command('mydata', async (ctx) => {
   ctx.reply(list, { parse_mode: 'HTML' });
 });
 
-// ৫. টেক্সট হ্যান্ডলার (আইডি দিয়ে ফাইল রিকভারি)
+// ৫. টেক্সট হ্যান্ডলার
 bot.on('text', async (ctx) => {
   const text = ctx.message.text.trim();
   if (text.startsWith('file')) {
@@ -108,15 +108,11 @@ bot.command('data', async (ctx) => {
   ctx.reply(list, { parse_mode: 'HTML' });
 });
 
+// এই কমান্ডটি এখন এডমিন চেক ছাড়া চলবে যাতে আপনি চেক করতে পারেন
 bot.command('user', async (ctx) => {
-  // এডমিন আইডি চেক এবং ডিবাগিং
-  if (ctx.from.id.toString() !== process.env.ADMIN_ID.toString()) {
-    return ctx.reply(`❌ অনুমতি নেই। আপনার আইডি: ${ctx.from.id}, প্রত্যাশিত: ${process.env.ADMIN_ID}`);
-  }
-  
   try {
     const usersSnapshot = await db.collection('users').get();
-    await ctx.reply(`👥 মোট ইউজার যারা বট স্টার্ট দিয়েছে: <b>${usersSnapshot.size}</b> জন।`, { parse_mode: 'HTML' });
+    await ctx.reply(`✅ ডাটাবেস কানেকশন ঠিক আছে!\n👥 মোট ইউজার যারা বট স্টার্ট দিয়েছে: <b>${usersSnapshot.size}</b> জন।`, { parse_mode: 'HTML' });
   } catch (error) {
     ctx.reply("❌ ডাটাবেস এরর: " + error.message);
   }

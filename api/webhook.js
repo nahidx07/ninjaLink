@@ -83,7 +83,7 @@ bot.start(async (ctx) => {
   const startParam = ctx.startPayload;
   if (!startParam) {
     return ctx.reply(`স্বাগতম! ফাইল শেয়ার করতে এখানে পাঠান।`, Markup.inlineKeyboard([
-      [Markup.button.url("🎬 Movie Channel", "https://t.me/MovieFantasyLover")]
+      [Markup.button.url("Update Channel", "https://t.me/DeveloperNinja")]
     ]));
   }
   const videoDoc = await db.collection('videos').doc(startParam).get();

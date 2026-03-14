@@ -101,7 +101,7 @@ bot.command('mydata', async (ctx) => {
   ctx.reply(list, { parse_mode: 'HTML' });
 });
 
-// ৫. এডমিন কমান্ডসমূহ (/data, /user, /broadcast)
+// ৫. এডমিন কমান্ডসমূহ
 bot.command('data', async (ctx) => {
   if (ctx.from.id.toString() !== process.env.ADMIN_ID) return;
   const userId = ctx.message.text.split(' ')[1];
@@ -117,13 +117,21 @@ bot.command('data', async (ctx) => {
 
 bot.command('user', async (ctx) => {
   if (ctx.from.id.toString() !== process.env.ADMIN_ID) return;
-  const users = await db.collection('users').get();
-  let list = `👥 মোট ইউজার: ${users.size} জন\n\n`;
-  users.forEach(doc => {
-    const u = doc.data();
-    list += `• <a href="tg://user?id=${u.user_id}">${u.first_name || "User"}</a> (ID: <code>${u.user_id}</code>)\n`;
-  });
-  ctx.reply(list, { parse_mode: 'HTML' });
+  try {
+    const statusMsg = await ctx.reply("⏳ ইউজার তালিকা লোড হচ্ছে...");
+    const usersSnapshot = await db.collection('users').get();
+    if (usersSnapshot.empty) return ctx.editMessageText("❌ ডাটাবেসে কোনো ইউজার পাওয়া যায়নি।");
+
+    let list = `👥 মোট ইউজার: ${usersSnapshot.size} জন\n\n`;
+    usersSnapshot.forEach(doc => {
+      const u = doc.data();
+      const name = u.first_name ? u.first_name.replace(/[<>]/g, '') : "User";
+      list += `• <a href="tg://user?id=${u.user_id}">${name}</a> (ID: <code>${u.user_id}</code>)\n`;
+    });
+    
+    if (list.length > 4000) list = list.substring(0, 3900) + "\n\n⚠️ তালিকা বড় হওয়ায় কিছু অংশ বাদ পড়েছে।";
+    await ctx.editMessageText(list, { parse_mode: 'HTML' });
+  } catch (error) { ctx.reply("❌ ইউজার লিস্ট লোড করতে ত্রুটি হয়েছে।"); }
 });
 
 bot.command('broadcast', async (ctx) => {

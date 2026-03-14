@@ -13,7 +13,7 @@ function generateRandomSlug(length = 10) {
   return result;
 }
 
-// ২. মিডিয়া হ্যান্ডলার (ক্যাপশনসহ সেভ ও নোটিফিকেশন)
+// ২. মিডিয়া হ্যান্ডলার (ক্যাপশনসহ চ্যানেলে সেভ ও ডিটেইলস মেসেজ)
 bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async (ctx) => {
   const waitMsg = await ctx.reply("⚡ প্রসেসিং হচ্ছে...");
   try {
@@ -22,6 +22,7 @@ bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async
     const mention = `<a href="tg://user?id=${user.id}">${firstName}</a>`;
     const originalCaption = ctx.message.caption || "";
 
+    // চ্যানেলে ফাইল কপি করা (ক্যাপশনসহ)
     const sentMsg = await ctx.telegram.copyMessage(
       process.env.CHANNEL_ID,
       ctx.chat.id,
@@ -33,6 +34,7 @@ bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async
     const botInfo = await ctx.telegram.getMe();
     const shareLink = `https://t.me/${botInfo.username}?start=${slug}`;
 
+    // চ্যানেলে ইউজার ইনফো পাঠানো
     const infoText = `📥 <b>নতুন ফাইল আপলোড!</b>\n\n` +
                      `👤 <b>নাম:</b> ${firstName}\n` +
                      `🆔 <b>আইডি:</b> <code>${user.id}</code>\n` +
@@ -41,6 +43,7 @@ bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async
 
     await ctx.telegram.sendMessage(process.env.CHANNEL_ID, infoText, { parse_mode: 'HTML' });
 
+    // ডাটাবেসে সেভ করা
     await db.collection('videos').doc(slug).set({
       slug: slug,
       message_id: sentMsg.message_id,
@@ -71,6 +74,7 @@ bot.start(async (ctx) => {
     if (startParam && startParam.startsWith('file')) {
       const videoDoc = await db.collection('videos').doc(startParam).get();
       if (videoDoc.exists) {
+        // রিকভারি করার সময় ক্যাপশন খালি (caption: "") রাখা হয়েছে
         await ctx.telegram.copyMessage(ctx.chat.id, process.env.CHANNEL_ID, videoDoc.data().message_id, { caption: "" });
       } else {
         ctx.reply("❌ ফাইলটি খুঁজে পাওয়া যায়নি।");
@@ -90,7 +94,7 @@ bot.command('mydata', async (ctx) => {
   ctx.reply(list, { parse_mode: 'HTML' });
 });
 
-// ৫. টেক্সট হ্যান্ডলার (আইডি দিলে ফাইল ক্যাপশন ছাড়া যাবে)
+// ৫. টেক্সট হ্যান্ডলার (আইডি দিলে ক্যাপশন ছাড়া ফাইল যাবে)
 bot.on('text', async (ctx) => {
   const text = ctx.message.text.trim();
   if (text.startsWith('file')) {

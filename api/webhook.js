@@ -13,7 +13,7 @@ function generateRandomSlug(length = 10) {
   return result;
 }
 
-// ২. মিডিয়া হ্যান্ডলার (ক্যাপশনসহ সেভ ও নোটিফিকেশন)
+// ২. মিডিয়া হ্যান্ডলার (ফাইল আপলোড)
 bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async (ctx) => {
   const waitMsg = await ctx.reply("⚡ প্রসেসিং হচ্ছে...");
   try {
@@ -30,8 +30,7 @@ bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async
     );
 
     const slug = `file${generateRandomSlug(10)}`; 
-    const botInfo = await ctx.telegram.getMe();
-    const shareLink = `https://t.me/${botInfo.username}?start=${slug}`;
+    const shareLink = `https://t.me/${process.env.BOT_USERNAME}?start=${slug}`;
 
     const infoText = `📥 <b>নতুন ফাইল আপলোড!</b>\n\n👤 <b>নাম:</b> ${firstName}\n🆔 <b>আইডি:</b> <code>${user.id}</code>\n💌 <b>ম্যানশন:</b> ${mention}\n🚀 <b>লিঙ্ক:</b> ${shareLink}`;
 
@@ -57,10 +56,7 @@ bot.start(async (ctx) => {
   const startParam = ctx.startPayload;
   try {
     const userRef = db.collection('users').doc(userId);
-    const userDoc = await userRef.get();
-    if (!userDoc.exists) {
-      await userRef.set({ user_id: userId, first_name: ctx.from.first_name || "Unknown", start_date: new Date().toISOString() });
-    }
+    await userRef.set({ user_id: userId, first_name: ctx.from.first_name || "Unknown", start_date: new Date().toISOString() }, { merge: true });
 
     if (startParam && startParam.startsWith('file')) {
       const videoDoc = await db.collection('videos').doc(startParam).get();
@@ -72,7 +68,7 @@ bot.start(async (ctx) => {
     } else {
       await ctx.reply(`স্বাগতম! ফাইল শেয়ার করতে এখানে পাঠান। ✔️`, Markup.inlineKeyboard([[Markup.button.url("Join Channel", "https://t.me/DeveloperNinja")]]));
     }
-  } catch (error) { ctx.reply("ত্রুটি ঘটেছে: " + error.message); }
+  } catch (error) { ctx.reply("ত্রুটি: " + error.message); }
 });
 
 // ৪. /mydata কমান্ড
@@ -84,7 +80,7 @@ bot.command('mydata', async (ctx) => {
   ctx.reply(list, { parse_mode: 'HTML' });
 });
 
-// ৫. টেক্সট হ্যান্ডলার
+// ৫. টেক্সট হ্যান্ডলার (আইডি দিলে ফাইল ক্যাপশন ছাড়া যাবে)
 bot.on('text', async (ctx) => {
   const text = ctx.message.text.trim();
   if (text.startsWith('file')) {
@@ -108,14 +104,11 @@ bot.command('data', async (ctx) => {
   ctx.reply(list, { parse_mode: 'HTML' });
 });
 
-// এই কমান্ডটি এখন এডমিন চেক ছাড়া চলবে যাতে আপনি চেক করতে পারেন
 bot.command('user', async (ctx) => {
   try {
     const usersSnapshot = await db.collection('users').get();
-    await ctx.reply(`✅ ডাটাবেস কানেকশন ঠিক আছে!\n👥 মোট ইউজার যারা বট স্টার্ট দিয়েছে: <b>${usersSnapshot.size}</b> জন।`, { parse_mode: 'HTML' });
-  } catch (error) {
-    ctx.reply("❌ ডাটাবেস এরর: " + error.message);
-  }
+    await ctx.reply(`👥 মোট ইউজার যারা বট স্টার্ট দিয়েছে: <b>${usersSnapshot.size}</b> জন।`, { parse_mode: 'HTML' });
+  } catch (error) { ctx.reply("❌ ডাটাবেস এরর: " + error.message); }
 });
 
 bot.command('broadcast', async (ctx) => {

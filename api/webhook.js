@@ -3,7 +3,24 @@ const db = require('../lib/firebase');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// ১. র‍্যান্ডম স্লাগ জেনারেটর
+// অটোমেটিক ইউজার সেভ করার মিডলওয়্যার (সব কমান্ড ও হ্যান্ডলারের আগে কাজ করবে)
+bot.use(async (ctx, next) => {
+  if (ctx.from) {
+    try {
+      await db.collection('users').doc(ctx.from.id.toString()).set({
+        id: ctx.from.id,
+        first_name: ctx.from.first_name || "Unknown",
+        username: ctx.from.username || "none",
+        last_seen: new Date().toISOString()
+      }, { merge: true });
+    } catch (e) {
+      console.error("User save error:", e);
+    }
+  }
+  return next();
+});
+
+// র‍্যান্ডম স্লাগ জেনারেটর
 function generateRandomSlug(length = 10) {
   const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let result = '';
@@ -13,7 +30,7 @@ function generateRandomSlug(length = 10) {
   return result;
 }
 
-// ২. মিডিয়া হ্যান্ডলার
+// মিডিয়া হ্যান্ডলার
 bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async (ctx) => {
   const waitMsg = await ctx.reply("⚡ প্রসেসিং হচ্ছে...");
   try {
@@ -22,7 +39,7 @@ bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async
     const botInfo = await ctx.telegram.getMe();
     const shareLink = `https://t.me/${botInfo.username}?start=${slug}`;
 
-    // চ্যানেলে কপি করা
+    // চ্যানেলে ফাইল কপি
     const sentMsg = await ctx.telegram.copyMessage(
       process.env.CHANNEL_ID, 
       ctx.chat.id, 
@@ -30,7 +47,7 @@ bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async
       { caption: originalCaption }
     );
 
-    // ইনফো মেসেজ (HTML মোড ব্যবহার করা হয়েছে যাতে এরর কম হয়)
+    // ইনফো মেসেজ (আলাদা ট্রাই-ক্যাচ যাতে এরর হলেও ফাইল আপলোড আটকে না যায়)
     try {
       const userName = (ctx.from.first_name || "User").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       const logMessage = `📥 <b>নতুন ফাইল আপলোড!</b>\n\n` +
@@ -38,7 +55,6 @@ bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async
                          `🆔 আইডি: <code>${ctx.from.id}</code>\n` +
                          `💌 ম্যানশন: <a href="tg://user?id=${ctx.from.id}">${userName}</a>\n` +
                          `🚀 লিঙ্ক: ${shareLink}`;
-      
       await ctx.telegram.sendMessage(process.env.CHANNEL_ID, logMessage, { parse_mode: 'HTML' });
     } catch (e) {
       console.error("Info message error:", e);
@@ -56,14 +72,13 @@ bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async
     await ctx.reply(`✅ ফাইলটি সেভ হয়েছে!\n\n🔗 লিঙ্ক: ${shareLink}`, Markup.inlineKeyboard([
       [Markup.button.url("🚀 শেয়ার করুন", `https://t.me/share/url?url=${encodeURIComponent(shareLink)}`)]
     ]));
-
   } catch (error) {
     console.error("Main error:", error);
     ctx.reply("❌ এরর! বটের চ্যানেলে এডমিন পারমিশন আছে কি না চেক করুন।");
   }
 });
 
-// ৩. /start কমান্ড
+// /start কমান্ড
 bot.start(async (ctx) => {
   const startParam = ctx.startPayload;
   if (!startParam) {
@@ -71,7 +86,6 @@ bot.start(async (ctx) => {
       [Markup.button.url("🎬 Movie Channel", "https://t.me/MovieFantasyLover")]
     ]));
   }
-
   const videoDoc = await db.collection('videos').doc(startParam).get();
   if (videoDoc.exists) {
     await ctx.telegram.copyMessage(ctx.chat.id, process.env.CHANNEL_ID, videoDoc.data().message_id, { caption: "" });
@@ -80,7 +94,7 @@ bot.start(async (ctx) => {
   }
 });
 
-// ৪. /mydata কমান্ড
+// /mydata কমান্ড
 bot.command('mydata', async (ctx) => {
   const vids = await db.collection('videos').where('uploader_id', '==', ctx.from.id).get();
   if (vids.empty) return ctx.reply("❌ আপনি এখনও কোনো ফাইল আপলোড করেননি।");
@@ -89,7 +103,7 @@ bot.command('mydata', async (ctx) => {
   ctx.reply(list, { parse_mode: 'HTML' });
 });
 
-// ৫. টেক্সট হ্যান্ডলার
+// টেক্সট হ্যান্ডলার
 bot.on('text', async (ctx) => {
   const text = ctx.message.text.trim();
   if (text.startsWith('file')) {
@@ -97,12 +111,12 @@ bot.on('text', async (ctx) => {
     if (videoDoc.exists) {
       await ctx.telegram.copyMessage(ctx.chat.id, process.env.CHANNEL_ID, videoDoc.data().message_id, { caption: "" });
     } else {
-      ctx.reply("❌ দুঃখিত, এই আইডি দিয়ে কোনো ফাইল পাওয়া যায়নি।");
+      ctx.reply("❌ আইডি দিয়ে কোনো ফাইল পাওয়া যায়নি।");
     }
   }
 });
 
-// ৬. এডমিন কমান্ডসমূহ
+// এডমিন কমান্ডসমূহ
 bot.command('data', async (ctx) => {
   if (ctx.from.id.toString() !== process.env.ADMIN_ID) return;
   const userId = ctx.message.text.split(' ')[1];

@@ -33,11 +33,7 @@ bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async
     const botInfo = await ctx.telegram.getMe();
     const shareLink = `https://t.me/${botInfo.username}?start=${slug}`;
 
-    const infoText = `📥 <b>নতুন ফাইল আপলোড!</b>\n\n` +
-                     `👤 <b>নাম:</b> ${firstName}\n` +
-                     `🆔 <b>আইডি:</b> <code>${user.id}</code>\n` +
-                     `💌 <b>ম্যানশন:</b> ${mention}\n` +
-                     `🚀 <b>লিঙ্ক:</b> ${shareLink}`;
+    const infoText = `📥 <b>নতুন ফাইল আপলোড!</b>\n\n👤 <b>নাম:</b> ${firstName}\n🆔 <b>আইডি:</b> <code>${user.id}</code>\n💌 <b>ম্যানশন:</b> ${mention}\n🚀 <b>লিঙ্ক:</b> ${shareLink}`;
 
     await ctx.telegram.sendMessage(process.env.CHANNEL_ID, infoText, { parse_mode: 'HTML' });
 
@@ -50,17 +46,15 @@ bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async
 
     await ctx.telegram.deleteMessage(ctx.chat.id, waitMsg.message_id);
     await ctx.reply(`✅ ফাইলটি সেভ হয়েছে!`, Markup.inlineKeyboard([[Markup.button.url("Join Channel", "https://t.me/DeveloperNinja")]]));
-
   } catch (error) {
-    ctx.reply("❌ এরর! বট চ্যানেলে এডমিন আছে কি না চেক করুন।");
+    ctx.reply("❌ এরর: " + error.message);
   }
 });
 
-// ৩. /start কমান্ড (ক্যাপশন ছাড়া রিকভারি)
+// ৩. /start কমান্ড
 bot.start(async (ctx) => {
   const userId = ctx.from.id.toString();
   const startParam = ctx.startPayload;
-
   try {
     const userRef = db.collection('users').doc(userId);
     const userDoc = await userRef.get();
@@ -76,12 +70,12 @@ bot.start(async (ctx) => {
         ctx.reply("❌ ফাইলটি খুঁজে পাওয়া যায়নি।");
       }
     } else {
-      await ctx.reply(`স্বাগতম! আপনার ফাইল শেয়ার করতে এখানে পাঠান। ✔️`, Markup.inlineKeyboard([[Markup.button.url("Join Channel", "https://t.me/DeveloperNinja")]]));
+      await ctx.reply(`স্বাগতম! ফাইল শেয়ার করতে এখানে পাঠান। ✔️`, Markup.inlineKeyboard([[Markup.button.url("Join Channel", "https://t.me/DeveloperNinja")]]));
     }
-  } catch (error) { ctx.reply("ত্রুটি ঘটেছে।"); }
+  } catch (error) { ctx.reply("ত্রুটি ঘটেছে: " + error.message); }
 });
 
-// ৪. ইউজার কমান্ড: /mydata
+// ৪. /mydata কমান্ড
 bot.command('mydata', async (ctx) => {
   const vids = await db.collection('videos').where('uploader_id', '==', ctx.from.id).get();
   if (vids.empty) return ctx.reply("❌ আপনি এখনও কোনো ফাইল আপলোড করেননি।");
@@ -90,7 +84,7 @@ bot.command('mydata', async (ctx) => {
   ctx.reply(list, { parse_mode: 'HTML' });
 });
 
-// ৫. টেক্সট হ্যান্ডলার (আইডি দিলে ফাইল ক্যাপশন ছাড়া যাবে)
+// ৫. টেক্সট হ্যান্ডলার (আইডি দিয়ে ফাইল রিকভারি)
 bot.on('text', async (ctx) => {
   const text = ctx.message.text.trim();
   if (text.startsWith('file')) {
@@ -105,7 +99,7 @@ bot.on('text', async (ctx) => {
 
 // ৬. এডমিন কমান্ডসমূহ
 bot.command('data', async (ctx) => {
-  if (ctx.from.id.toString() !== process.env.ADMIN_ID) return;
+  if (ctx.from.id.toString() !== process.env.ADMIN_ID.toString()) return;
   const userId = ctx.message.text.split(' ')[1];
   const vids = await db.collection('videos').where('uploader_id', '==', parseInt(userId)).get();
   if (vids.empty) return ctx.reply("❌ ফাইল নেই।");
@@ -115,13 +109,21 @@ bot.command('data', async (ctx) => {
 });
 
 bot.command('user', async (ctx) => {
-  if (ctx.from.id.toString() !== process.env.ADMIN_ID) return;
-  const usersSnapshot = await db.collection('users').get();
-  await ctx.reply(`👥 মোট ইউজার: <b>${usersSnapshot.size}</b> জন।`, { parse_mode: 'HTML' });
+  // এডমিন আইডি চেক এবং ডিবাগিং
+  if (ctx.from.id.toString() !== process.env.ADMIN_ID.toString()) {
+    return ctx.reply(`❌ অনুমতি নেই। আপনার আইডি: ${ctx.from.id}, প্রত্যাশিত: ${process.env.ADMIN_ID}`);
+  }
+  
+  try {
+    const usersSnapshot = await db.collection('users').get();
+    await ctx.reply(`👥 মোট ইউজার যারা বট স্টার্ট দিয়েছে: <b>${usersSnapshot.size}</b> জন।`, { parse_mode: 'HTML' });
+  } catch (error) {
+    ctx.reply("❌ ডাটাবেস এরর: " + error.message);
+  }
 });
 
 bot.command('broadcast', async (ctx) => {
-  if (ctx.from.id.toString() !== process.env.ADMIN_ID) return;
+  if (ctx.from.id.toString() !== process.env.ADMIN_ID.toString()) return;
   const msg = ctx.message.text.split(' ').slice(1).join(' ');
   if (!msg) return ctx.reply("❌ নিয়ম: /broadcast [আপনার মেসেজ]");
   
@@ -134,7 +136,7 @@ bot.command('broadcast', async (ctx) => {
       await ctx.telegram.sendMessage(doc.id, msg);
       success++;
     } catch (e) { fail++; }
-    await new Promise(r => setTimeout(r, 100)); // Rate limit control
+    await new Promise(r => setTimeout(r, 100)); 
   }
   await ctx.editMessageText(`✅ ব্রডকাস্ট সম্পন্ন!\n🚀 সফল: ${success}\n❌ ব্যর্থ: ${fail}`);
 });

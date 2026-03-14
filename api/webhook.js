@@ -13,7 +13,7 @@ function generateRandomSlug(length = 10) {
   return result;
 }
 
-// মিডিয়া হ্যান্ডলার (চ্যানেলে কপি এবং ইনফো মেসেজ পাঠানো)
+// মিডিয়া হ্যান্ডলার
 bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async (ctx) => {
   const waitMsg = await ctx.reply("⚡ প্রসেসিং হচ্ছে...");
   try {
@@ -30,10 +30,11 @@ bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async
       { caption: originalCaption }
     );
 
-    // ২. চ্যানেলে ইনফো মেসেজ পাঠানো
+    // ২. ইনফো মেসেজ তৈরি ও পাঠানো
     const userName = ctx.from.first_name || "User";
     const userMention = `[${userName}](tg://user?id=${ctx.from.id})`;
-    const logMessage = `📥 **নতুন ফাইল আপলোড!**\n\n` +
+    
+    const logMessage = `📥 নতুন ফাইল আপলোড!\n\n` +
                        `👤 নাম: ${userName}\n` +
                        `🆔 আইডি: ${ctx.from.id}\n` +
                        `💌 ম্যানশন: ${userMention}\n` +
@@ -41,7 +42,7 @@ bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async
     
     await ctx.telegram.sendMessage(process.env.CHANNEL_ID, logMessage, { parse_mode: 'Markdown' });
 
-    // ৩. ডাটাবেসে সেভ করা
+    // ৩. ডাটাবেসে সেভ
     await db.collection('videos').doc(slug).set({
       slug: slug,
       message_id: sentMsg.message_id,
@@ -54,7 +55,7 @@ bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async
         [Markup.button.url("🚀 শেয়ার করুন", `https://t.me/share/url?url=${encodeURIComponent(shareLink)}`)]
     ]));
   } catch (error) {
-    console.error(error);
+    console.error("Error details:", error);
     ctx.reply("❌ এরর! বটের চ্যানেলে এডমিন পারমিশন আছে কি না চেক করুন।");
   }
 });
@@ -63,7 +64,7 @@ bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async
 bot.start(async (ctx) => {
   const startParam = ctx.startPayload;
   if (!startParam) {
-    return ctx.reply(`স্বাগতম! ফাইল শেয়ার করতে এখানে ফাইল পাঠান।`, Markup.inlineKeyboard([
+    return ctx.reply(`স্বাগতম! ফাইল শেয়ার করতে এখানে পাঠান।`, Markup.inlineKeyboard([
         [Markup.button.url("🎬 Movie Channel", "https://t.me/MovieFantasyLover")]
     ]));
   }
@@ -85,7 +86,7 @@ bot.command('mydata', async (ctx) => {
   ctx.reply(list, { parse_mode: 'HTML' });
 });
 
-// টেক্সট হ্যান্ডলার (আইডি দিয়ে ফাইল রিকভারি)
+// টেক্সট হ্যান্ডলার
 bot.on('text', async (ctx) => {
   const text = ctx.message.text.trim();
   if (text.startsWith('file')) {
@@ -98,13 +99,12 @@ bot.on('text', async (ctx) => {
   }
 });
 
-// এডমিন কমান্ডসমূহ
+// এডমিন কমান্ড
 bot.command('data', async (ctx) => {
   if (ctx.from.id.toString() !== process.env.ADMIN_ID) return;
   const userId = ctx.message.text.split(' ')[1];
-  if (!userId) return ctx.reply("ব্যবহার করুন: /data [userId]");
   const vids = await db.collection('videos').where('uploader_id', '==', parseInt(userId)).get();
-  if (vids.empty) return ctx.reply("❌ কোনো ফাইল পাওয়া যায়নি।");
+  if (vids.empty) return ctx.reply("❌ কোনো ফাইল নেই।");
   let list = `👤 ইউজার: ${userId}\n📂 মোট ফাইল: ${vids.size}টি\n\n`;
   vids.forEach((doc, i) => list += `${i+1}. আইডি: <code>${doc.data().slug}</code>\n`);
   ctx.reply(list, { parse_mode: 'HTML' });

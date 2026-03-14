@@ -49,7 +49,8 @@ bot.on(['video', 'document', 'photo', 'animation', 'audio', 'video_note'], async
     });
 
     await ctx.telegram.deleteMessage(ctx.chat.id, waitMsg.message_id);
-    await ctx.reply(`✅ ফাইলটি সেভ হয়েছে!\n\n🔗 লিঙ্ক: ${shareLink}`, Markup.inlineKeyboard([[Markup.button.url("🚀 শেয়ার করুন", `https://t.me/share/url?url=${shareLink}`)]]));
+    await ctx.reply(`✅ ফাইলটি সেভ হয়েছে!`, Markup.inlineKeyboard([[Markup.button.url("Join Channel", "https://t.me/DeveloperNinja")]]));
+
   } catch (error) {
     ctx.reply("❌ এরর! বট চ্যানেলে এডমিন আছে কি না চেক করুন।");
   }
@@ -75,9 +76,7 @@ bot.start(async (ctx) => {
         ctx.reply("❌ ফাইলটি খুঁজে পাওয়া যায়নি।");
       }
     } else {
-      await ctx.reply(`স্বাগতম! ফাইল শেয়ার করতে এখানে পাঠান। ✔️`, {
-        ...Markup.inlineKeyboard([[Markup.button.url("🎬 Movie Channel", "https://t.me/MovieFantasyLover")]])
-      });
+      await ctx.reply(`স্বাগতম! আপনার ফাইল শেয়ার করতে এখানে পাঠান। ✔️`, Markup.inlineKeyboard([[Markup.button.url("Join Channel", "https://t.me/DeveloperNinja")]]));
     }
   } catch (error) { ctx.reply("ত্রুটি ঘটেছে।"); }
 });
